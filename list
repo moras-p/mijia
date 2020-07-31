@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+# Output found MAC addresses for nearby devices of given ID
+# Devices must not be paired with any other device
+
+DEV_ID=${1:-"LYWSD03MMC"}
+
+STREAM="hcitool lescan"
+stdbuf -oL $STREAM |
+  while read -r line; do
+    case "$line" in
+        *$DEV_ID)
+            DEV=${line:0:17}
+            echo "$DEV"
+            ;;
+
+        *)
+            ;;
+        # Set scan parameters failed: Operation not permitted
+        # need sudo
+
+        # Set scan parameters failed: Input/output error
+        # ??
+    esac
+  done

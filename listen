@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Get readings from device with given MAC address (use list to find nearby devices)
+
+SUCCESS='\033[0;32m'
+WARNING='\033[0;33m'
+ERROR='\033[0;31m'
+OPTIONAL='\033[2;37m'
+NC='\033[0m'
+
+set -e
+
+MAC=${1:-"A4:C1:38:CF:E5:BB"}
+STREAM="gatttool -b $MAC --char-write-req --handle=0x0038 --value=0100 --listen"
+
+stdbuf -oL $STREAM |
+  while read -r line; do
+    case "$line" in
+        Characteristic*)
+            echo -e "$WARNING$line$NC"
+            ;;
+
+        Notification*)
+            O="$line"
+            # O="Notification handle = 0x0036 value: 3f 0a 2a ce 0b "
+            T=${O:39:2}${O:36:2} # two first bytes L-E are temperature * 100
+            RH=${O:42:2} # third value is RH in hex
+            V=${O:48:2}${O:45:2} # two last bytes L-E are battery voltage * 100
+            dT="$((10**2 * "0x$T"/100))e-2"
+            dRH="0x$RH"
+            dV="$((10**3 * "0x$V"/1000))e-3"
+            printf "$SUCCESS~ Temperature %.2f °C, Humidity %d %%, Battery %.3f V (3.1 to 2.1)$NC\n" $dT $dRH $dV $dVP
+            ;;
+
+        *)
+            echo "$line"
+            ;;
+    esac
+  done
