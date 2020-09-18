@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Get readings from device with given MAC address (use list to find nearby devices)
 
 SUCCESS='\033[0;32m'
@@ -8,32 +10,46 @@ ERROR='\033[0;31m'
 OPTIONAL='\033[2;37m'
 NC='\033[0m'
 
-set -e
+UUID_MIJIA_DATA="ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6"
+UUID_CCCD="00002902-0000-1000-8000-00805f9b34fb"
+NOTIFY_ME_BITMASK="0100"
 
 MAC=${1:-"A4:C1:38:CF:E5:BB"}
-STREAM="gatttool -b $MAC --char-write-req --handle=0x0038 --value=0100 --listen"
 
-stdbuf -oL $STREAM |
-  while read -r line; do
-    case "$line" in
-        Characteristic*)
-            echo -e "$WARNING$line$NC"
-            ;;
+echo -e "${WARNING}Please wait...$NC"
 
-        Notification*)
-            O="$line"
-            # O="Notification handle = 0x0036 value: 3f 0a 2a ce 0b "
-            T=${O:39:2}${O:36:2} # two first bytes L-E are temperature * 100
-            RH=${O:42:2} # third value is RH in hex
-            V=${O:48:2}${O:45:2} # two last bytes L-E are battery voltage * 100
-            dT="$((10**2 * "0x$T"/100))e-2"
-            dRH="0x$RH"
-            dV="$((10**3 * "0x$V"/1000))e-3"
-            printf "$SUCCESS~ Temperature %.2f °C, Humidity %d %%, Battery %.3f V (3.1 to 2.1)$NC\n" $dT $dRH $dV $dVP
-            ;;
+DESCRIPTORS="gatttool -b ${MAC} --char-desc"
+MIJIA_DATA_CCCD_HANDLE=$($DESCRIPTORS | grep -A2 ${UUID_MIJIA_DATA} | grep ${UUID_CCCD} | awk -F'[ ,]' '{ print $3 }')
+STREAM="gatttool -b $MAC --char-write-req --handle=${MIJIA_DATA_CCCD_HANDLE} --value=${NOTIFY_ME_BITMASK} --listen"
 
-        *)
-            echo "$line"
-            ;;
-    esac
-  done
+case "${MIJIA_DATA_CCCD_HANDLE}" in
+  0x*) # Handle found
+    stdbuf -oL $STREAM |
+      while read -r line; do
+        case "$line" in
+            Characteristic*)
+              echo -e "$WARNING$line$NC"
+              ;;
+
+            Notification*)
+              O="$line"
+              T=${O:39:2}${O:36:2} # two first bytes L-E are temperature * 100
+              RH=${O:42:2}         # third value is RH in hex
+              V=${O:48:2}${O:45:2} # two last bytes L-E are battery voltage * 100
+              dT="$((10**2 * "0x$T"/100))e-2"
+              dRH="0x$RH"
+              dV="$((10**3 * "0x$V"/1000))e-3"
+              printf "$SUCCESS~ Temperature %.2f °C, Humidity %d %%, Battery %.3f V (3.1 to 2.1)$NC\n" $dT $dRH $dV $dVP
+              ;;
+
+            *)
+              echo "$line"
+              ;;
+        esac
+      done
+    ;;
+  
+  *)
+    echo -e "${ERROR}Mijia Data *Client Characteristic Configuration Descriptor* handle not found!$NC"
+    ;;
+esac
